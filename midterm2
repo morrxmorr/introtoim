@@ -1,0 +1,254 @@
+let player;
+let shots = [];
+let enemies = [];
+let cooldown = 300;
+let lastShotTime = 0;
+let shotType = 1;
+let spread = 1;
+let spawnRate = 1800;
+let lastSpawnTime = 0;
+let gameState;
+let font, spaceship, alien, lazer, gameover, bkground;
+
+function setup() {
+  createCanvas(610, 610);
+  gameState = 0;
+  
+  player = {
+    x: width / 2,
+    y: 610 - 150,
+    size: 30,
+    speed: 5,
+    angle: 0
+  };
+}
+
+function preload() {
+  font = loadFont('pixelfont.otf');
+  spaceship = loadImage('spaceship.png');
+  alien = loadImage('alien.png');
+  lazer = loadSound('lazer.wav');
+  gameover = loadSound('gameover.wav');
+  bkground = loadImage('background.png');
+}
+
+function draw() {
+  if (gameState === 1) {
+    bkground.resize(610, 610);
+    imageMode(CENTER);
+    image(bkground, width/2, height/2);
+  } else {
+    background(0);
+  }
+  noStroke();
+
+  if (gameState === 0) {
+    drawMenu();
+  } else if (gameState === 1) {
+    handleGameplay();
+  } else if (gameState === 2) {
+    drawGameOver();
+  }
+
+
+}
+
+function drawMenu() {
+  player.x = width / 2;
+  player.y = 610 - 150;
+  shots = [];
+  enemies = [];
+  
+  fill(255);
+  textAlign(CENTER);
+  textFont(font);
+  textSize(48);
+  text('ALIEN SHOOTER', width/2, height-500);
+  textSize(18);
+  text('MOVE - W, A, S, D', width/2, height-400);
+  text('AIM - MOUSE POINTER', width/2, height-350);
+  text('TOGGLE WEAPON - NUMKEY 1-6', width/2, height-300);
+  text('FIRE - CLICK', width/2, height-250);
+  text('SURVIVE - you have 1 life', width/2, height-200);
+  textSize(32);
+  text('press SPACE to begin', width/2, height-100);
+  
+  if (keyIsDown(32)) gameState = 1;
+}
+
+function handleGameplay() {
+  handleShots();
+  handleEnemies();
+  handlePlayerControls();
+  handleSpawning()
+  drawPlayer();
+}
+
+function handleShots() {
+  for (let i = shots.length - 1; i >= 0; i--) {
+    let shot = shots[i];
+    
+    push();
+    translate(shot.x, shot.y);
+    rotate(shot.angle);
+    fill(shot.color);
+    rectMode(CENTER);
+    rect(0, 0, shot.width, shot.height);
+    pop();
+    
+    shot.x += cos(shot.angle) * shot.speed;
+    shot.y += sin(shot.angle) * shot.speed;
+    
+    if (shot.x < 0 || shot.x > width || shot.y < 0 || shot.y > height) {
+      shots.splice(i, 1);
+    }
+  }
+
+  if (mouseIsPressed && millis() - lastShotTime > cooldown) {
+    lazer.play();
+    handleWeaponFire();
+    lastShotTime = millis();
+  }
+}
+
+function handleWeaponFire() {
+  if (shotType === 4) {
+    fireSpread(5, 30);
+  } else if (shotType === 5) {
+    fireSpread(2, 10);
+  } else if (shotType === 6) {
+    fireCircle(4);
+  } else {
+    let spread = shotType === 1 ? 3 : shotType === 2 ? 6 : 0;
+    let angleDiff = radians(random(-spread, spread));
+    shots.push(createShot(angleDiff));
+  }
+}
+
+function fireSpread(count, spread) {
+  let angleIncrement = spread / (count - 1);
+  for (let i = 0; i < count; i++) {
+    let angleDiff = radians(-spread/2 + i * angleIncrement);
+    shots.push(createShot(angleDiff));
+  }
+}
+
+function fireCircle(count) {
+  for (let i = 0; i < count; i++) {
+    let angleDiff = radians(i * 90);
+    shots.push(createShot(angleDiff));
+  }
+}
+
+function handleEnemies() {
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    let enemy = enemies[i];
+    
+    let distanceToPlayer = dist(enemy.x, enemy.y, player.x, player.y);
+    if (distanceToPlayer < player.size/2 + enemy.size/2) {
+      gameState = 2;
+      enemies.splice(i, 1);
+      continue;
+    }
+
+    for (let j = shots.length - 1; j >= 0; j--) {
+      let shot = shots[j];
+      let distanceToShot = dist(enemy.x, enemy.y, shot.x, shot.y);
+      if (distanceToShot < enemy.size/2 + max(shot.width, shot.height)/2) {
+        enemy.hp -= shot.damage;
+        if (shotType !== 3) shots.splice(j, 1);
+        if (enemy.hp <= 0) enemies.splice(i, 1);
+        break;
+      }
+    }
+
+    let angleToPlayer = atan2(player.y - enemy.y, player.x - enemy.x);
+    enemy.x += cos(angleToPlayer) * enemy.speed;
+    enemy.y += sin(angleToPlayer) * enemy.speed;
+    
+    image(alien, enemy.x, enemy.y, enemy.size * 2.5, enemy.size * 2.5);
+  }
+}
+
+function handlePlayerControls() {
+  player.angle = atan2(mouseY - player.y, mouseX - player.x);
+  
+  if (keyIsDown(87)) player.y -= player.speed; // W
+  if (keyIsDown(83)) player.y += player.speed; // S
+  if (keyIsDown(65)) player.x -= player.speed; // A
+  if (keyIsDown(68)) player.x += player.speed; // D
+  
+  player.x = constrain(player.x, player.size/2, width - player.size/2);
+  player.y = constrain(player.y, player.size/2, height - player.size/2);
+}
+
+function handleSpawning() {
+  if (millis() - lastSpawnTime > spawnRate) {
+    spawnEnemy();
+    lastSpawnTime = millis();
+  }
+}
+
+function drawPlayer() {
+  push();
+  translate(player.x, player.y);
+  rotate(player.angle);
+  imageMode(CENTER);
+  image(spaceship, 0, 0, 100, 100);
+  pop();
+}
+
+function drawGameOver() {
+  fill(255);
+  textAlign(CENTER);
+  textFont(font);
+  textSize(48);
+  text('GAME OVER', width/2, height-340);
+  textSize(24);
+  text('THANKS FOR PLAYING', width/2, height-260);
+  textSize(28);
+  text('press ENTER to restart', width/2, height-100);
+  
+  if (keyIsDown(13)) gameState = 0;
+}
+
+function createShot(angleDiff = 0) {
+  let params = {
+    1: {color: [0,255,0], w: 12.5, h: 12.5, speed: 15, damage: 2},
+    2: {color: [255,0,0], w: 15, h: 10, speed: 8, damage: 1.5},
+    3: {color: [50,50,255], w: 45, h: 3, speed: 30, damage: 6},
+    4: {color: [255,255,0], w: 15, h: 10, speed: 12, damage: 1.5},
+    5: {color: [255,50,255], w: 8, h: 24, speed: 15, damage: 3},
+    6: {color: [170,50,255], w: 5, h: 35, speed: 25, damage: 3}
+  }[shotType];
+
+  return {
+    x: player.x,
+    y: player.y,
+    width: params.w,
+    height: params.h,
+    speed: params.speed,
+    angle: player.angle + angleDiff,
+    color: params.color,
+    damage: params.damage
+  };
+}
+
+function spawnEnemy() {
+  enemies.push({
+    x: random(width),
+    y: 0,
+    size: 30,
+    speed: 2.5,
+    hp: 6
+  })
+  spawnRate *= 0.995
+}
+
+function keyPressed() {
+  if (key >= '1' && key <= '6') {
+    const cooldowns = [400, 150, 800, 600, 500, 600];
+    shotType = parseInt(key);
+    cooldown = cooldowns[shotType-1];
+  }
+}
